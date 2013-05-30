@@ -1,0 +1,83 @@
+************************************************************************************
+* Upek BSAPI.DLL Breakpoints used with BioEnroll.exe
+* brad.antoniewicz@foundstone.com
+*
+* Keep in mind many of these don't provide the most amazing insight, but 
+* they might help you reproduce things. Also the Crypt() bps are from some
+* blogpost. 
+************************************************************************************
+bc *
+************************************************************************************
+* CryptAcquireContextA:
+
+bp Advapi32!CryptAcquireContextA ".printf \"\\n>>>>>>>>>>>>>>>>>>>>>>\\n\\nCryptAcquireContextA (%#x)\\n\", @$tid;    .echo;.echo IN;    .echo pszContainer; .if(poi(@esp+8)=0) {.echo NULL} .else {da poi(@esp+8)};    .echo;.echo pszProvider; .if(poi(@esp+c)=0) {.echo NULL} .else {da poi(@esp+c)};    .echo;.echo dwProvType; .if(poi(@esp+10)=1) {.echo PROV_RSA_FULL} .elsif(poi(@esp+10)=24) {.echo PROV_RSA_AES} .else {.printf \"%d\\n\", poi(@esp+10)};    .printf \"\\ndwFlags\\n%#x\\n\", poi(@esp+14); .if((poi(@esp+14)&0x0`F0000000)=0x0`F0000000){.echo CRYPT_VERIFYCONTEXT(0xf0000000)}; .if((poi(@esp+14)&0x0`00000008)=0x0`00000008){.echo CRYPT_NEWKEYSET(0x8)}; .if((poi(@esp+14)&0x0`00000010)=0x0`00000010) {.echo CRYPT_DELETEKEYSET(0x10)}; .if((poi(@esp+14)&0x0`00000020)=0x0`00000020) {.echo CRYPT_MACHINE_KEYSET(0x20)}; .if((poi(@esp+14)&0x0`00000040)=0x0`00000040) {.echo CRYPT_SILENT(0x40)};    bp /t @$thread poi(@esp) \"    .echo;.echo OUT;    .if(poi(@esp-14)=0) {.echo phProv;.echo NULL} .else {.echo hProv; .if(poi(poi(@esp-14))=0) {.echo NULL} .else {.printf \\\"%#x\\\\n\\\", poi(poi(@esp-14))} };    .echo;.echo RESULT;    .if(@eax=1) {.printf \\\"CryptAcquireContextA (%#x) SUCCEEDED\\\\n\\\", @$tid} .else {.printf \\\"CryptAcquireContextA (%#x) FAILED\\\\n\\\", @$tid;!gle};    .echo;.echo <<<<<<<<<<<<<<<<<<<<<<;    G;\";    G;";
+
+************************************************************************************
+* Advapi32!CryptGenRandom
+
+bp Advapi32!CryptGenRandom ".printf \"\\n>>>>>>>>>>>>>>>>>>>>>>\\n\\nCryptGenRandom (%#x)\\n\", @$tid;    .echo;.echo IN;    .printf \"hProv\\n%#x\\n\\n\", poi(@esp+4);    .printf \"dwLen\\n%d\\n\", poi(@esp+8);    r $t0=(poi(@esp+8)+3)/4; .echo;.echo bBuffer; dd poi(@esp+c) l@$t0;    bp /t @$thread poi(@esp) \"    .echo;.echo OUT;    r $t0=(poi(@esp-8)+3)/4; .echo bBuffer; db poi(@esp-4) l16;    .echo;.echo RESULT;    .if(@eax=1) {.printf \\\"CryptGenRandom (%#x) SUCCEEDED\\\\n\\\", @$tid} .else {.printf \\\"CryptGenRandom (%#x) FAILED\\\\n\\\", @$tid;!gle};    .echo;.echo <<<<<<<<<<<<<<<<<<<<<<;    G;\";    G;";
+************************************************************************************
+* bsapi specific breaks
+* After call to CryptGenRandom (In callCryptGenRandom) - I think this further
+* modifies the output from CryptGenRandom. 
+* bu bsapi!ABSSetLedEx+0x8f8ba ".echo \"ebp+4Ch:\"; db ebp+4Ch; .echo \"ebp-24h:\"; db ebp-24h;g;";
+* Right before a memcpy - i think this changes around the random somehow
+* bu bsapi!ABSSetLedEx+0x8f8ed ".echo \"Value right before the memcpy at the end of callCallCryptgenRandom: \n\"; db poi(esp+4); .echo; G;";
+* This is our Locally Calculated Response Value 
+bu bsapi!ABSSetLedEx+0x8f8ed ".echo \"Locally Calculated Response Value:\"; db /c 12 poi(esp+4) L 12;  .echo; G;";
+* To make it look like what actually gets sent over usb:
+* bu bsapi!ABSSetLedEx+0x8f8ed ".echo \"As Seen in USB Locally Calculated Response Value:\"; .echo \"04 + \"; db /c 12 poi(esp+4)+2 L 10; .echo \" + 03 FD FD FD FD FD + \"; db /c 12 poi(esp+4) L 12; .echo \" + FD FD FD FD FD FD FD FD FD FD FD FD FD FD + Some val \";  .echo; G;";
+
+* after call to calCryptGenRandom (in callCallCryptGenRandom)
+* bu  bsapi!ABSSetLedEx+0xcc88c
+* Location of changeGenRandom 
+* bu bsapi!ABSSetLedEx+0x9a7d1 ".echo \"In changeGenRandom()\"; G;";
+* bu bsapi!ABSSetLedEx+0x9a88b ".echo \"This should be the Randomly Generated Value:\"; db /c 12 poi(esp+14h) L 12; .echo; G;";
+* bu bsapi!ABSSetLedEx+0x9a891 ".echo \"This value is the modified to the Randomly generated value that results in the response: \"; db /c 12 ecx L 12; .echo;  G;";
+bu  bsapi!ABSSetLedEx+0xccc32 "lmf m bsapi; .echo; .echo; .echo \"We\'ll send the challenge and receive the response once you hit \'g\' \"; .echo; .echo;";
+
+********************************
+* Testing Break Points (Taking Guesses at shit)
+********************************
+*bu bsapi!ABSSetLedEx+0x8f827 ".echo \"This is at the pop ebx in sub_5D3732B - taking on step after it\"; t; dd ebx;";
+*****
+* This is the start of "prepDataAndSend()" 
+*****
+* bu bsapi!ABSSetLedEx+0xe934f ".echo; .echo; .echo \"At the start of prepDataAndSend()\"; .echo; .echo";
+*******
+* This is right before the chal/resp is sent (and really all usb traffic)
+*******
+* bu bsapi!ABSSetLedEx+0xe9391 ".echo;.echo \"In prepDataAndSend() at memcpy\"; r; dd eax; .echo; dd esp; .echo; k; g;";
+* bu bsapi!ABSSetLedEx+0xe93d6 ".echo; .echo; .echo \"In prepDataAndSend()\"; .echo; .echo; .echo \"Sending:\"; db ecx;";
+*******
+* sub_616B30C - when tracing back argMsgBody, stuck here
+*******
+* bu bsapi!ABSSetLedEx+0xe3729 "k;g";
+*******
+* At call to callCallCryptCreateRandom - This contains the msgbody of the challenge that has yet to be populated
+*******
+bu bsapi!ABSSetLedEx+0xccc2d ".echo; .echo \"MsgBody [db poi(esi+1c)]\"; .echo; db poi(esi+1c); .echo; g;";
+*******
+* Call to memcpy within sendRecvUSBData - This is where the challenge value is copied into the actual challenge msgbody
+*******
+bu bsapi!ABSSetLedEx+0xcc879 ".echo; .echo\"Challenge Value Should be: \"; .echo; db ebx+51 L12; .echo;";
+*******
+* Function before the above memcpy - This bp is to check and see what gets modified before/after
+*******
+* bu bsapi!ABSSetLedEx+0xcc86b
+*******
+* start of sendRecvUSBData
+*******
+* bu bsapi!ABSSetLedEx+0xcc7c5 ".echo; .echo \"Start of sendRecvUSBData\"; .echo; .echo;";
+*******
+* xorStaticModifier
+*******
+* bu bsapi!ABSSetLedEx+0xe3752 ".echo; .echo \"Start of xorStaticModifier\"; .echo; .echo;";
+*******
+* obfuscateResponseToChallenge
+*******
+* bu bsapi!ABSSetLedEx+0xe377d ".echo; .echo \"Start of obfuscateResponseToChallenge\"; .echo; .echo;";
+************************************************************************************
+* END Upek BSAPI.DLL BreakPoints
+************************************************************************************
+g

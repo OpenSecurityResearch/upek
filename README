@@ -1,0 +1,15 @@
+UPEK Fingerprint Reader Info
+brad.antoniewicz@foundstone.com
+--------------------------------
+
+This the result of some reversing I did while investigating
+the USB communication between the UPEK fingerprint reader
+and its host software. 
+
+
+upek-BioEnroll-winDBGbreakpoints.txt - Various helpful breakpoints
+    for debugging
+
+
+upekChallengeResponse.py - implementation of the challenge/response
+    mechanism used between the reader and the host software
